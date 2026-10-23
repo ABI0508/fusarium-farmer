@@ -8,11 +8,15 @@ body{font-family:system-ui,sans-serif;margin:0;background:#f4f7f4;color:#1b1b1b}
 header{background:#2e7d32;color:#fff;padding:14px 16px;font-size:18px;font-weight:600}
 main{max-width:560px;margin:auto;padding:14px}
 .card{background:#fff;border-radius:14px;padding:14px;margin:12px 0;box-shadow:0 1px 4px #0002}
-.warn{background:#fff3cd}.ok{background:#e8f5e9}
-.bar{background:#e0e0e0;height:10px;border-radius:5px}.bar div{background:#2e7d32;height:10px;border-radius:5px}
-button{width:100%;padding:14px;font-size:17px;border:0;border-radius:12px;background:#2e7d32;color:#fff;margin:6px 0}
-select,input{font-size:16px;padding:8px}
+.warn{background:#fff3cd}.ok{background:#e8f5e9}.bad{background:#fdecea}
+.bar{background:#e0e0e0;height:10px;border-radius:5px}.bar div{height:10px;border-radius:5px}
+button,.btn{display:block;box-sizing:border-box;text-align:center;width:100%;padding:14px;font-size:17px;border:0;border-radius:12px;background:#2e7d32;color:#fff;margin:6px 0;cursor:pointer}
+.btn.alt{background:#fff;color:#2e7d32;border:2px solid #2e7d32}
+.row{display:flex;gap:8px}.row .btn{flex:1}
+input[type=file]{display:none}
+select,input[type=number]{font-size:16px;padding:8px}
 .small{font-size:13px;color:#555}
+#prev{width:100%;max-height:240px;object-fit:cover;border-radius:10px;margin-top:8px;display:none}
 </style></head>
 <body>
 <header id="title"></header>
@@ -20,36 +24,61 @@ select,input{font-size:16px;padding:8px}
 <main>
 <div class="card">
 <select id="lang"><option value="en">English</option><option value="ta">தமிழ்</option></select>
-<p><input type="file" id="f" accept="image/*" capture="environment"></p>
-<div>Budget <input type="number" id="bud" value="100" min="0" max="100" style="width:70px">
-Moisture <input type="range" id="moi" min="0" max="1" step="0.1" value="0.6"></div>
-<button id="go">Analyse</button>
+<div class="row" style="margin-top:8px">
+ <label class="btn" id="bcam" for="fcam"></label>
+ <label class="btn alt" id="bgal" for="fgal"></label>
+</div>
+<input type="file" id="fcam" accept="image/*" capture="environment">
+<input type="file" id="fgal" accept="image/*">
+<img id="prev" alt="">
+<div style="margin-top:8px"><span id="lbud"></span> <input type="number" id="bud" value="100" min="0" max="100" style="width:70px">
+<span id="lmoi"></span> <input type="range" id="moi" min="0" max="1" step="0.1" value="0.6"></div>
+<button id="go"></button>
 <div id="status"></div>
 <p class="small" id="tips"></p>
 </div>
 <div id="out"></div>
-
-<p><a id="fb" href="https://forms.gle/15yY3nhfTPbV5juw5" target="_blank" rel="noopener">Wrong prediction? Send feedback</a></p>
+<p><a id="fb" href="https://forms.gle/15yY3nhfTPbV5juw5" target="_blank" rel="noopener"></a>
+<br><span class="small" id="net"></span></p>
 </main>
 <script>
-const MEAN=[0.485,0.456,0.406],STD=[0.229,0.224,0.225],THR=0.8;
-const CL=["1(HR)","3(R)","5(MR)","7(S)","9(HS)"],COST=[0,1,3,10,5];
-const T={en:{title:"Fusarium Robot Farmer (prototype)",names:["Highly Resistant","Resistant","Moderately Resistant","Susceptible","Highly Susceptible"],
- act:["Do nothing","Re-scan (take another photo)","Irrigate","Treat","Remove plant"],pred:"Prediction",conf:"Confidence",sev:"Expected severity (0-4)",
- sug:"Suggested action",unc:"Uncertain prediction. Take a clearer photo or ask an expert. No treatment suggested.",
- noaf:"Not enough budget; doing nothing.",disc:"Advisory from a simulation-trained model (about 76% accuracy). Not a substitute for an agronomist.",
- load:"Loading model...",ready:"Ready (works offline)",pick:"Pick a photo first",run:"Analysing...",fb:"Wrong prediction? Send feedback",
+const MEAN=[0.485,0.456,0.406],STD=[0.229,0.224,0.225],THR=0.8,PLANT_MIN=0.35;
+const COST=[0,1,3,10,5];
+const COL=["#1b5e20","#66bb6a","#fbc02d","#f57c00","#c62828"],EMO=["🟢","🟢","🟡","🟠","🔴"];
+const T={en:{title:"Fusarium Robot Farmer (prototype)",
+ names:["Healthy (very safe)","Mostly safe","Watch closely","Disease likely","Severe wilt risk"],
+ act:["Do nothing","Take another photo","Irrigate","Treat","Remove plant"],
+ conf:"Confidence",sug:"Suggested action",
+ unc:"Not sure. Take a clearer close-up photo or ask an expert. No treatment suggested.",
+ noaf:"Not enough budget; doing nothing.",
+ notplant:"This does not look like a plant photo. Please photo a chickpea leaf or plant, close-up, in daylight.",
+ scale:"The result shows how strongly the plant is at risk from Fusarium wilt. Always confirm with an expert.",
+ disc:"Advisory from a simulation-trained model (about 76% accuracy). Not a substitute for an agronomist.",
+ load:"Loading model...",ready:"Ready (works offline)",pick:"Pick a photo first",run:"Analysing...",
+ cam:"📷 Camera",gal:"🖼️ Gallery",go:"Analyse",bud:"Budget",moi:"Moisture",
+ fb:"Wrong result? Send feedback",net:"(feedback needs internet; analysis works offline)",
  tips:"Tip: photo the leaf or stem close-up, in daylight, in focus."},
- ta:{title:"ஃபியூசேரியம் ரோபோ விவசாயி",names:["அதிக எதிர்ப்பு","எதிர்ப்பு","மிதமான எதிர்ப்பு","பாதிப்படையக்கூடியது","மிகவும் பாதிப்படையக்கூடியது"],
- act:["எதுவும் செய்ய வேண்டாம்","மீண்டும் படம் எடுக்கவும்","நீர் பாய்ச்சவும்","சிகிச்சை அளிக்கவும்","செடியை அகற்றவும்"],pred:"கணிப்பு",conf:"நம்பகத்தன்மை",sev:"எதிர்பார்க்கப்படும் தீவிரம் (0-4)",
- sug:"பரிந்துரை",unc:"கணிப்பு உறுதியாக இல்லை. தெளிவான படம் எடுக்கவும் அல்லது நிபுணரை அணுகவும். சிகிச்சை பரிந்துரைக்கப்படவில்லை.",
- noaf:"போதிய பணம் இல்லை; எதுவும் செய்யவில்லை.",disc:"இது உருவகப்படுத்தலில் பயிற்சி பெற்ற மாதிரியின் ஆலோசனை மட்டுமே (சுமார் 76% துல்லியம்). வேளாண் நிபுணருக்கு மாற்றல்ல.",
- load:"மாதிரி ஏற்றப்படுகிறது...",ready:"தயார் (இணையம் இல்லாமலும் இயங்கும்)",pick:"முதலில் படம் தேர்வு செய்யவும்",run:"பகுப்பாய்வு...",fb:"தவறான கணிப்பா? கருத்தை அனுப்பு",
+ ta:{title:"ஃபியூசேரியம் ரோபோ விவசாயி",
+ names:["ஆரோக்கியம் (மிகவும் பாதுகாப்பு)","பெரும்பாலும் பாதுகாப்பு","கவனிக்கவும்","நோய் பாதிப்பு வாய்ப்பு","கடுமையான வாடல் அபாயம்"],
+ act:["எதுவும் செய்ய வேண்டாம்","மீண்டும் படம் எடுக்கவும்","நீர் பாய்ச்சவும்","சிகிச்சை அளிக்கவும்","செடியை அகற்றவும்"],
+ conf:"நம்பகத்தன்மை",sug:"பரிந்துரை",
+ unc:"உறுதியாக இல்லை. தெளிவான அருகிலுள்ள படம் எடுக்கவும் அல்லது நிபுணரை அணுகவும். சிகிச்சை பரிந்துரைக்கப்படவில்லை.",
+ noaf:"போதிய பணம் இல்லை; எதுவும் செய்யவில்லை.",
+ notplant:"இது செடியின் படம் போல் தெரியவில்லை. கடலைச் செடியின் இலை அல்லது செடியை பகல் வெளிச்சத்தில் அருகில் படம் எடுக்கவும்.",
+ scale:"இந்த முடிவு செடிக்கு ஃபியூசேரியம் வாடல் நோய் அபாயம் எவ்வளவு என்பதை காட்டுகிறது. நிபுணரிடம் உறுதி செய்யவும்.",
+ disc:"இது உருவகப்படுத்தலில் பயிற்சி பெற்ற மாதிரியின் ஆலோசனை மட்டுமே (சுமார் 76% துல்லியம்). வேளாண் நிபுணருக்கு மாற்றல்ல.",
+ load:"மாதிரி ஏற்றப்படுகிறது...",ready:"தயார் (இணையம் இல்லாமலும் இயங்கும்)",pick:"முதலில் படம் தேர்வு செய்யவும்",run:"பகுப்பாய்வு...",
+ cam:"📷 கேமரா",gal:"🖼️ கேலரி",go:"பகுப்பாய்வு செய்",bud:"பணம்",moi:"ஈரப்பதம்",
+ fb:"தவறான முடிவா? கருத்தை அனுப்பு",net:"(கருத்து அனுப்ப இணையம் தேவை; பகுப்பாய்வு இணையம் இல்லாமலும் இயங்கும்)",
  tips:"குறிப்பு: இலை அல்லது தண்டை அருகில், பகல் வெளிச்சத்தில், தெளிவாக படம் எடுக்கவும்."}};
-const $=id=>document.getElementById(id); let sess,pol;
+const $=id=>document.getElementById(id); let sess,pol,file=null;
 const L=()=>T[$("lang").value];
-function setTitle(){$("title").textContent=L().title;$("fb").textContent=L().fb;$("tips").textContent=L().tips}
-$("lang").onchange=setTitle; setTitle();
+function setText(){const l=L();$("title").textContent=l.title;$("fb").textContent=l.fb;$("net").textContent=l.net;
+ $("tips").textContent=l.tips;$("bcam").textContent=l.cam;$("bgal").textContent=l.gal;$("go").textContent=l.go;
+ $("lbud").textContent=l.bud;$("lmoi").textContent=l.moi}
+$("lang").onchange=setText; setText();
+function choose(e){file=e.target.files[0]||null;if(file){const p=$("prev");p.src=URL.createObjectURL(file);p.style.display="block";$("out").innerHTML=""}}
+$("fcam").onchange=choose;$("fgal").onchange=choose;
 async function init(){$("status").textContent=L().load;
  ort.env.wasm.wasmPaths="./";ort.env.wasm.numThreads=1;
  sess=await ort.InferenceSession.create("swin.onnx",{executionProviders:["wasm"]});
@@ -57,23 +86,29 @@ async function init(){$("status").textContent=L().load;
 init();
 function prep(img){const c=document.createElement("canvas");c.width=c.height=224;const x=c.getContext("2d");
  x.drawImage(img,0,0,224,224);const d=x.getImageData(0,0,224,224).data,f=new Float32Array(3*224*224);
- for(let i=0;i<224*224;i++)for(let k=0;k<3;k++)f[k*224*224+i]=(d[i*4+k]/255-MEAN[k])/STD[k];
- return new ort.Tensor("float32",f,[1,3,224,224]);}
+ let plantish=0;
+ for(let i=0;i<224*224;i++){const r=d[i*4],g=d[i*4+1],b=d[i*4+2];
+  if(g>b*1.1&&g>40)plantish++;   // green / yellow / brown tones (blue and white-grey fail)
+  for(let k=0;k<3;k++)f[k*224*224+i]=(d[i*4+k]/255-MEAN[k])/STD[k];}
+ return {tensor:new ort.Tensor("float32",f,[1,3,224,224]),plantFrac:plantish/(224*224)};}
 function softmax(a){const m=Math.max(...a),e=a.map(v=>Math.exp(v-m)),s=e.reduce((x,y)=>x+y);return e.map(v=>v/s)}
 function lin(W,b,x){return W.map((r,i)=>r.reduce((s,w,j)=>s+w*x[j],b[i]))}
 function policy(o){let h=lin(pol["mlp_extractor.policy_net.0.weight"],pol["mlp_extractor.policy_net.0.bias"],o).map(Math.tanh);
  h=lin(pol["mlp_extractor.policy_net.2.weight"],pol["mlp_extractor.policy_net.2.bias"],h).map(Math.tanh);
  const z=lin(pol["action_net.weight"],pol["action_net.bias"],h);return z.indexOf(Math.max(...z));}
-$("go").onclick=async()=>{const fl=$("f").files[0];if(!fl){$("status").textContent=L().pick;return}
- $("status").textContent=L().run;const img=new Image();img.src=URL.createObjectURL(fl);await img.decode();
- const r=await sess.run({x:prep(img)});const p=softmax(Array.from(r.logits.data));
+$("go").onclick=async()=>{if(!file){$("status").textContent=L().pick;return}
+ $("status").textContent=L().run;const img=new Image();img.src=URL.createObjectURL(file);await img.decode();
+ const {tensor,plantFrac}=prep(img);
+ if(plantFrac<PLANT_MIN){$("out").innerHTML=`<div class="card bad"><b>⚠️ ${L().notplant}</b></div>`;$("status").textContent=L().ready;return}
+ const r=await sess.run({x:tensor});const p=softmax(Array.from(r.logits.data));
  const conf=Math.max(...p),k=p.indexOf(conf),bud=Math.min(100,Math.max(0,parseFloat($("bud").value)||0)),moi=parseFloat($("moi").value);
  const obs=[...p,0,1,bud/100,moi,0];let a=policy(obs),note="";
  if(conf<THR){a=1;note=L().unc}else if(COST[a]>bud){a=0;note=L().noaf}
- const sev=p.reduce((s,v,i)=>s+v*i,0);
- let h=`<div class="card"><b>${L().pred}: ${CL[k]} ${L().names[k]}</b><br>${L().conf}: ${(conf*100).toFixed(0)}% | ${L().sev}: ${sev.toFixed(2)}`;
- p.forEach((v,i)=>h+=`<div>${CL[i]} ${(v*100).toFixed(0)}%<div class="bar"><div style="width:${v*100}%"></div></div></div>`);
- h+=`</div><div class="card ${conf<THR?"warn":"ok"}"><b>${L().sug}: ${L().act[a]}</b> (cost ${COST[a]})<br>${note}</div><i>${L().disc}</i>`;
+ let h=`<div class="card" style="border-left:8px solid ${COL[k]}"><div style="font-size:22px;font-weight:700">${EMO[k]} ${L().names[k]}</div>
+ <div>${L().conf}: ${(conf*100).toFixed(0)}%</div></div><div class="card">`;
+ p.forEach((v,i)=>h+=`<div>${EMO[i]} ${L().names[i]} ${(v*100).toFixed(0)}%<div class="bar"><div style="width:${v*100}%;background:${COL[i]}"></div></div></div>`);
+ h+=`</div><div class="card ${conf<THR?"warn":"ok"}"><b>${L().sug}: ${L().act[a]}</b><br>${note}</div>
+ <p class="small">${L().scale}</p><i class="small">${L().disc}</i>`;
  $("out").innerHTML=h;$("status").textContent=L().ready;};
 if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js");
 </script></body></html>
