@@ -17,6 +17,8 @@ input[type=file]{display:none}
 select,input[type=number]{font-size:16px;padding:8px}
 .small{font-size:13px;color:#555}
 #prev{width:100%;max-height:240px;object-fit:cover;border-radius:10px;margin-top:8px;display:none}
+#cam{display:none;width:100%;border-radius:10px;margin-top:8px}
+#snap{display:none}
 </style></head>
 <body>
 <header id="title"></header>
@@ -30,6 +32,8 @@ select,input[type=number]{font-size:16px;padding:8px}
 </div>
 <input type="file" id="fcam" accept="image/*" capture="environment">
 <input type="file" id="fgal" accept="image/*">
+<video id="cam" autoplay playsinline muted></video>
+<button id="snap">📸 Capture</button>
 <img id="prev" alt="">
 <div style="margin-top:8px"><span id="lbud"></span> <input type="number" id="bud" value="100" min="0" max="100" style="width:70px">
 <span id="lmoi"></span> <input type="range" id="moi" min="0" max="1" step="0.1" value="0.6"></div>
@@ -77,8 +81,30 @@ function setText(){const l=L();$("title").textContent=l.title;$("fb").textConten
  $("tips").textContent=l.tips;$("bcam").textContent=l.cam;$("bgal").textContent=l.gal;$("go").textContent=l.go;
  $("lbud").textContent=l.bud;$("lmoi").textContent=l.moi}
 $("lang").onchange=setText; setText();
-function choose(e){file=e.target.files[0]||null;if(file){const p=$("prev");p.src=URL.createObjectURL(file);p.style.display="block";$("out").innerHTML=""}}
+function show(f){file=f;const p=$("prev");p.src=URL.createObjectURL(f);p.style.display="block";$("out").innerHTML=""}
+function choose(e){const f=e.target.files[0];if(f)show(f)}
 $("fcam").onchange=choose;$("fgal").onchange=choose;
+
+// Laptop/desktop: live webcam + Capture. Phones keep the direct camera (capture attribute).
+const isDesktop=!/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+function stopCam(){const v=$("cam");if(v.srcObject){v.srcObject.getTracks().forEach(t=>t.stop());v.srcObject=null}
+ v.style.display="none";$("snap").style.display="none"}
+if(isDesktop){
+ $("bcam").addEventListener("click",async e=>{
+  e.preventDefault();
+  try{
+   const s=await navigator.mediaDevices.getUserMedia({video:true});
+   $("cam").srcObject=s;$("cam").style.display="block";$("snap").style.display="block";
+  }catch(err){$("fcam").click()}   // webcam blocked/unavailable -> normal file picker
+ });
+ $("snap").onclick=()=>{
+  const v=$("cam"),c=document.createElement("canvas");c.width=v.videoWidth;c.height=v.videoHeight;
+  c.getContext("2d").drawImage(v,0,0);
+  c.toBlob(b=>{show(new File([b],"capture.jpg",{type:"image/jpeg"}));stopCam()},"image/jpeg",0.92);
+ };
+ $("fgal").addEventListener("click",stopCam);
+}
+
 async function init(){$("status").textContent=L().load;
  ort.env.wasm.wasmPaths="./";ort.env.wasm.numThreads=1;
  sess=await ort.InferenceSession.create("swin.onnx",{executionProviders:["wasm"]});
