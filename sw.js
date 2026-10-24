@@ -1,4 +1,4 @@
-const C = "ff-v8";
+const C = "ff-v9";
 const F = ["./", "index.html", "swin.onnx", "policy.json", "manifest.json",
   "ort.min.js", "ort-wasm.wasm", "ort-wasm-simd.wasm",
   "ort-wasm-threaded.wasm", "ort-wasm-simd-threaded.wasm",
